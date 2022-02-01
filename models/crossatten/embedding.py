@@ -474,7 +474,7 @@ class TimeFreq_TokenEmbedding(nn.Module):
         shape = self.get_the_shape(input_shape) # B C F L
 		
         dim = shape[1]*shape[2]
-        print("------------dim-------------", shape[1], "    ", shape[1])
+        print("------------dim-------------", shape[1], "    ", shape[2])
         self.fc = nn.Linear(dim,int(dim/2))
         self.activation = nn.ReLU()
 
