@@ -1,11 +1,19 @@
 import torch
 import torch.nn as nn
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import seaborn as sns
 import matplotlib.pylab as plt
-
+import numpy as np
 from models.crossatten.utils import DW_PW_projection,  Norm_dict, Activation_dict
 # TODO 所有循环结构应该呈现灵活性，每一层都不能一样！
+
+div_sa = 3
+
+
+
 class SE_Block(nn.Module):
     "credits: https://github.com/moskomule/senet.pytorch/blob/master/senet/se_module.py#L4"
     def __init__(self, c, r=1):
@@ -23,6 +31,55 @@ class SE_Block(nn.Module):
         y = self.squeeze(x).view(bs, c)
         y = self.excitation(y).view(bs, c, 1, 1)
         return x * y.expand_as(x)
+
+
+def conv1d(ni: int, no: int, ks: int = 1, stride: int = 1, padding: int = 0, bias: bool = False):
+    """
+    Create and initialize a `nn.Conv1d` layer with spectral normalization.
+    """
+    conv = nn.Conv1d(ni, no, ks, stride=stride, padding=padding, bias=bias)
+    nn.init.kaiming_normal_(conv.weight)
+    if bias:
+        conv.bias.data.zero_()
+    # return spectral_norm(conv)
+    return conv
+
+class SelfAttention(nn.Module):
+    """
+    # self-attention implementation from https://github.com/fastai/fastai/blob/5c51f9eabf76853a89a9bc5741804d2ed4407e49/fastai/layers.py
+    Self attention layer for nd
+    """
+    def __init__(self, n_channels: int, div):
+        super(SelfAttention, self).__init__()
+        self.div = div
+        if n_channels > 1:
+            self.query = conv1d(n_channels, n_channels//div)
+            self.key = conv1d(n_channels, n_channels//div)
+            if self.div > 1:
+                self.value = conv1d(n_channels, n_channels//div)
+                self.value1 = conv1d(n_channels, n_channels//div)
+            else:
+                self.value = conv1d(n_channels, n_channels)
+                self.value1 = None
+        else:
+            self.query = conv1d(n_channels, n_channels)
+            self.key = conv1d(n_channels, n_channels)
+            self.value = conv1d(n_channels, n_channels)
+            self.value1 = None
+        self.gamma = nn.Parameter(torch.tensor([0.]))
+
+    def forward(self, x):
+        # Notation from https://arxiv.org/pdf/1805.08318.pdf
+        size = x.size()
+        batch , filter, Channel, _ = x.shape # _ = 1
+        x = x.view(*size[:2], -1)
+        f, g, h = self.query(x), self.key(x), self.value(x)
+        beta = F.softmax(torch.bmm(f.permute(0, 2, 1).contiguous(), g), dim=1)
+        if self.value1 is not None:
+            x = self.value1(x)
+        o = self.gamma * torch.bmm(h, beta) + x
+        #return o.view(batch,int(filter/3),Channel,1).contiguous()
+        return o.view(batch,int(filter/self.div),Channel,1).contiguous()
 # ---------------------- PositionalEmbedding ----------------------
 
 class PositionalEmbedding(nn.Module):
@@ -182,6 +239,67 @@ class TokenEmbedding(nn.Module):
     def sequence_length(self, length=100, n_channels=3):
         return self.forward(torch.zeros((1, length,n_channels))).shape[1]
 
+class Time_FeatureExtractor_attention(nn.Module):
+    def __init__(self, input_shape, number_filter, token_d_model, conv_number=4, filter_size=5, activation = "ReLU"):
+        super(Time_FeatureExtractor_attention, self).__init__()
+        # input_shape: B L C
+        print("Time_FeatureExtractor_attention with ", div_sa)
+        c_in = input_shape[2]
+
+        layers = []
+        for i in range(conv_number):
+            if i == 0:
+                temp = 1
+            else:
+                temp = number_filter
+            layers.append(nn.Sequential(
+                nn.Conv2d(temp, number_filter, (filter_size, 1), padding ="same"),
+                nn.ReLU(inplace=True),
+                #nn.BatchNorm2d(number_filter)
+            ))
+        self.layers = nn.ModuleList(layers)
+
+        self.dropout = nn.Dropout(0.2)
+
+        self.sa = SelfAttention(number_filter*div_sa, div=div_sa)
+        self.activation = nn.ReLU() if activation == "ReLU" else nn.Tanh()
+        self.fc = nn.Linear(number_filter*c_in, token_d_model)
+
+    def forward(self, x):
+        x = x.unsqueeze(1)
+        # x shape batch 1  Length Channel
+        for layer in self.layers:
+            x = layer(x)
+        # x shape batch number_filter, Length Channel
+        batch, filter, length, channel = x.shape
+
+
+        #refined = torch.cat(
+        #    [self.sa(torch.unsqueeze(x[:, :, t, :], dim=3)) for t in range(x.shape[2])],
+        #    dim=-1,
+        #)
+        #x = refined.permute(0, 3, 1, 2)
+        #x = x.reshape(x.shape[0], x.shape[1], -1)
+        #x = self.dropout(x)
+        #x = self.activation(self.fc(x))
+        refined = [] 
+        step = int(np.ceil(length/div_sa))
+
+        for index in range(step):
+            if index<step-1:
+                temp = torch.unsqueeze(x[:, :, index*div_sa:(index+1)*div_sa, :].reshape(batch, -1, channel).contiguous(), dim=3)
+            else:
+                temp = torch.unsqueeze(x[:, :, -div_sa:, :].reshape(batch, -1, channel).contiguous(), dim=3)
+            refined.append(self.sa(temp))
+
+        refined = torch.cat(refined,   dim=-1)
+        # refined shape batch numberfilter, C, Length/div_sa
+        x = self.activation(refined.permute(0, 3, 1, 2))
+        # x shape batch length/div_sa number_filter, C
+        x = x.reshape(x.shape[0], x.shape[1], -1).contiguous()
+        x = self.dropout(x)
+        x = self.activation(self.fc(x))
+        return x
 
 class Time_Embedding(nn.Module):
     def __init__(
@@ -283,11 +401,12 @@ class TimeEmbedder(nn.Module):
         #                                      pooling_padding      = args.token_pool_pad,
         #                                      padding_mode         = args.padding_mode,
         #                                      light_weight         = args.light_weight)
-        self.value_embedding = Time_Embedding( input_shape = (1, args.input_length, args.c_in) ,
-                                               token_d_model = args.token_d_model )
-
+        #self.value_embedding = Time_Embedding( input_shape = (1, args.input_length, args.c_in) ,
+        #                                       token_d_model = args.token_d_model )
+        self.value_embedding = Time_FeatureExtractor_attention( input_shape = (1, args.input_length, args.c_in) ,
+                                                                number_filter = 16, token_d_model=args.token_d_model )
         #sequence_length = self.value_embedding.sequence_length(length       =  args.input_length,   n_channels   =  args.c_in) + 1
-        sequence_length = args.input_length + 1
+        sequence_length = int(np.ceil(args.input_length/div_sa)) + 1
         
         self.class_emb = nn.Parameter(torch.zeros(1, 1, args.token_d_model), requires_grad=True)
 
@@ -440,6 +559,72 @@ class Freq_TokenEmbedding(nn.Module):
         #print("channel ,", x.shape[2])
         return x.shape[2]
 
+class TimeFreq_FeatureExtractor_attention(nn.Module):
+    def __init__(self, input_shape, number_filter, token_d_model, conv_number=4, filter_size=5, activation = "ReLU"):
+        super(TimeFreq_FeatureExtractor_attention, self).__init__()
+        # input_shape: B C F L
+        print("TimeFreq_FeatureExtractor_attention with ",div_sa)
+        c_in = input_shape[1]
+        f_in = input_shape[2]
+        layers = []
+        for i in range(conv_number):
+            if i == 0:
+                temp = f_in
+            else:
+                temp = number_filter
+            layers.append(nn.Sequential(
+                nn.Conv2d(temp, number_filter, (filter_size, 1), padding ="same"),
+                nn.ReLU(inplace=True),
+                #nn.BatchNorm2d(number_filter)
+            ))
+        self.layers = nn.ModuleList(layers)
+
+        self.dropout = nn.Dropout(0.2)
+
+        self.sa = SelfAttention(number_filter*div_sa, div=div_sa)
+        self.activation = nn.ReLU() if activation == "ReLU" else nn.Tanh()
+        self.fc = nn.Linear(number_filter*c_in, token_d_model)
+
+    def forward(self, x):
+        # x shape batch Channel Freq Length
+        x = x.permute(0,2,3,1)
+        # x shape batch Freq Length Channel
+        for layer in self.layers:
+            x = layer(x)
+        # x shape batch number_filter, Length Channel
+        batch, filter, length, channel = x.shape
+        #print("freq x shape before attention : " , x.shape)
+
+        #refined = torch.cat(
+        #    [self.sa(torch.unsqueeze(x[:, :, t, :], dim=3)) for t in range(x.shape[2])],
+        #    dim=-1,
+        #)
+        #x = refined.permute(0, 3, 1, 2)
+        #x = x.reshape(x.shape[0], x.shape[1], -1)
+        #x = self.dropout(x)
+        #x = self.activation(self.fc(x))
+        refined = [] 
+        step = int(np.ceil(length/div_sa))
+
+        for index in range(step):
+            if index<step-1:
+                temp = torch.unsqueeze(x[:, :, index*div_sa:(index+1)*div_sa, :].reshape(batch, -1, channel).contiguous(), dim=3)
+            else:
+                temp = torch.unsqueeze(x[:, :, -div_sa:, :].reshape(batch, -1, channel).contiguous(), dim=3)
+            refined.append(self.sa(temp))
+
+        refined = torch.cat(refined,   dim=-1)
+        # refined shape batch numberfilter, C, Length/div_sa
+        x = self.activation(refined.permute(0, 3, 1, 2))
+        #print("freq x shape after attention : " , x.shape)
+        # x shape batch length/3 number_filter, C
+        x = x.reshape(x.shape[0], x.shape[1], -1).contiguous()
+        x = self.dropout(x)
+        x = self.activation(self.fc(x))
+
+        return x
+
+
 
 class TimeFreq_TokenEmbedding(nn.Module):
     def __init__(self, input_shape, token_d_model, dw_layers = 3 ,se_layers = 3):
@@ -474,7 +659,7 @@ class TimeFreq_TokenEmbedding(nn.Module):
         shape = self.get_the_shape(input_shape) # B C F L
 		
         dim = shape[1]*shape[2]
-        print("------------dim-------------", shape[1], "    ", shape[2])
+        #print("------------dim-------------", shape[1], "    ", shape[2])
         self.fc = nn.Linear(dim,int(dim/2))
         self.activation = nn.ReLU()
 
@@ -523,12 +708,19 @@ class FreqEmbedder(nn.Module):
         else:
             f_scale = 1
 
-        self.value_embedding = TimeFreq_TokenEmbedding( input_shape   = (1, args.c_in, int(args.sampling_freq/f_scale), int(args.input_length/l_scale)),
-                                                        token_d_model = args.token_d_model,
-                                                        dw_layers = 3 ,se_layers = 2)
-    
+        #self.value_embedding = TimeFreq_TokenEmbedding( input_shape   = (1, args.c_in, int(args.sampling_freq/f_scale), int(args.input_length/l_scale)),
+        #                                                token_d_model = args.token_d_model,
+        #                                                dw_layers = 3 ,se_layers = 2)
+
+
+        self.value_embedding = TimeFreq_FeatureExtractor_attention(input_shape   = (1, args.c_in, int(args.sampling_freq/f_scale), int(args.input_length/l_scale)),
+                                                                   number_filter = 32,
+                                                                   token_d_model = args.token_d_model,
+                                                                   conv_number   = 4, filter_size=5)
+
         #sequence_length = self.value_embedding.sequence_length(c_in = args.c_in, freq = args.sampling_freq, length= args.input_length)+1
-        sequence_length = int(args.input_length/l_scale) + 1
+        #sequence_length = int(args.input_length/l_scale) + 1
+        sequence_length = int(np.ceil(int(args.input_length/l_scale)/div_sa)) + 1
 
         self.class_emb = nn.Parameter(torch.zeros(1, 1, args.token_d_model), requires_grad=True)
 

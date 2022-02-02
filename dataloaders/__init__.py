@@ -115,7 +115,7 @@ class data_set(Dataset):
         start_index = self.slidingwindows[index][1]
         end_index = self.slidingwindows[index][2]
 
-        if self.args.model_type in ["time", "deepconvlstm", "sahar", "deepconvlstm_attn", "attend"]:
+        if self.args.model_type in ["time", "deepconvlstm", "sahar", "deepconvlstm_attn", "attend", "attend_new"]:
 
 
             sample_x = self.data_x.iloc[start_index:end_index, 1:-1].values

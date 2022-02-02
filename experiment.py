@@ -14,6 +14,7 @@ from models.deepconvlstm import DeepConvLSTM
 from models.SA_HAR import SA_HAR
 from models.deepconvlstm_attn import DeepConvLSTM_ATTN
 from models.Attend import AttendDiscriminate
+from models.Attend_new import AttendDiscriminate_new
 from models.CNN_freq import CNN_Freq_Model
 
 
@@ -72,6 +73,9 @@ class Exp(object):
         elif self.args.model_type == "attend":
             model  = AttendDiscriminate(self.args.c_in, self.args.num_classes)
             print("Build the AttendDiscriminate model!")
+        elif self.args.model_type == "attend_new":
+            model  = AttendDiscriminate_new(self.args.c_in, self.args.num_classes)
+            print("Build the AttendDiscriminate_new model!")
         elif self.args.model_type == "cnn_freq":
             model  = CNN_Freq_Model((1,self.args.c_in, self.args.sampling_freq, self.args.input_length ), self.args.num_classes)
             print("Build the CNN_Freq_Model model!")			
