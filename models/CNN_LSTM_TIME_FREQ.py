@@ -78,9 +78,11 @@ class CNN_LSTM_CROSS_Model(nn.Module):
 
 
         self.activation = nn.ReLU(inplace=True)
-        self.fc_t_tf = nn.Linear((number_filters_tf+number_filters_t), 64)
-        self.fc = nn.Linear(64, number_class)
-
+        #self.fc_t_tf = nn.Linear((number_filters_tf+number_filters_t), 64)
+        #self.fc = nn.Linear(64, number_class)
+        self.fct = nn.Linear(number_filters_t, number_class)
+        self.fctf = nn.Linear(number_filters_tf, number_class)
+        self.fc = nn.Linear(number_class,number_class)
     def forward(self, x_t, x_tf):
 
         batch_t, length_t, channel_t = x_t.shape
@@ -106,10 +108,13 @@ class CNN_LSTM_CROSS_Model(nn.Module):
         x_tf, _ = self.lstm_layers_tf_2(x_tf)
         x_tf = x_tf[:,-1,:]
 
-        x = torch.cat((x_t, x_tf), 1)
+        #x = torch.cat((x_t, x_tf), 1)
 
-        x = self.activation(self.fc_t_tf(x))
-        x = self.fc(x)
+        #x = self.activation(self.fc_t_tf(x))
+        #x = self.fc(x)
+        x_t = self.fct(x_t)
+        x_tf = self.fctf(x_tf)
+        x = self.fc(self.activation(x_t+x_tf))
         return x
     
     
