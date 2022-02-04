@@ -73,9 +73,9 @@ class DeepConvLSTM(nn.Module):
         self.lstm_layers = []
         for i in range(self.nb_layers_lstm):
             if i == 0:
-                self.lstm_layers.append(nn.LSTM(self.nb_channels * self.nb_filters, self.nb_units_lstm))
+                self.lstm_layers.append(nn.LSTM(self.nb_channels * self.nb_filters, self.nb_units_lstm, batch_first =True))
             else:
-                self.lstm_layers.append(nn.LSTM(self.nb_units_lstm, self.nb_units_lstm))
+                self.lstm_layers.append(nn.LSTM(self.nb_units_lstm, self.nb_units_lstm, batch_first =True))
         self.lstm_layers = nn.ModuleList(self.lstm_layers)
         
         # define dropout layer

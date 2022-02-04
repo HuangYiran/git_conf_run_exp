@@ -134,7 +134,7 @@ class Exp(object):
 		
 		
 
-        if self.args.exp_mode in ["LOCV", "SOCV"]:
+        if self.args.exp_mode in ["LOCV", "SOCV","Given"]:
             file_name_1 = "Time_{}_{}_{}_{}_data{}_mode{}_model{}_win{}_mask{}_score.txt".format(dateTimeObj.month, dateTimeObj.day, dateTimeObj.hour, dateTimeObj.minute,
                                                                                           self.args.data_name, self.args.exp_mode, self.args.model_type, self.args.windowsize, self.args.attention_layer_types)
             file_name_1 = os.path.join(self.args.to_save_path, file_name_1)
