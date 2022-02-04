@@ -16,9 +16,9 @@ from models.deepconvlstm_attn import DeepConvLSTM_ATTN
 from models.Attend import AttendDiscriminate
 from models.Attend_new import AttendDiscriminate_new
 from models.CNN_freq import CNN_Freq_Model
-
-
-
+from models.CNN_LSTM_FREQ import CNN_LSTM_FREQ_Model
+from models.CNN_LSTM_TIME import CNN_LSTM_TIME_Model
+from models.CNN_LSTM_TIME_FREQ import CNN_LSTM_CROSS_Model
 
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import f1_score
@@ -78,8 +78,16 @@ class Exp(object):
             print("Build the AttendDiscriminate_new model!")
         elif self.args.model_type == "cnn_freq":
             model  = CNN_Freq_Model((1,self.args.c_in, self.args.sampling_freq, self.args.input_length ), self.args.num_classes)
-            print("Build the CNN_Freq_Model model!")			
-
+            print("Build the CNN_Freq_Model model!")		
+        elif self.args.model_type == "cnn_lstm_freq":
+            model  = CNN_LSTM_FREQ_Model((self.args.input_length,self.args.sampling_freq ), self.args.num_classes)
+            print("Build the CNN_LSTM_FREQ_Model model!")					
+        elif self.args.model_type == "cnn_lstm_time":
+            model  = CNN_LSTM_TIME_Model((self.args.input_length, self.args.c_in ), self.args.num_classes)
+            print("Build the CNN_LSTM_TIME_Model model!")		
+        elif self.args.model_type == "cnn_lstm_cross":
+            model  = CNN_LSTM_CROSS_Model((self.args.input_length, self.args.c_in ),(self.args.input_length,self.args.sampling_freq ), self.args.num_classes)
+            print("Build the CNN_LSTM_CROSS_Model model!")			
         else:
             raise NotImplementedError
         return model.double()
@@ -118,6 +126,7 @@ class Exp(object):
         setting = "Time_{}_{}_{}_{}_data{}_mode{}_model{}_win{}_depth{}".format(dateTimeObj.month, dateTimeObj.day, dateTimeObj.hour, dateTimeObj.minute,
                                                                                 self.args.data_name, self.args.exp_mode, self.args.model_type, self.args.windowsize, self.args.cross_depth)
         path = os.path.join(self.args.to_save_path,'logs/'+setting)
+        self.path = path
         if not os.path.exists(path):
             os.makedirs(path)
 
@@ -213,7 +222,7 @@ class Exp(object):
 
                     model_optim.zero_grad()
 
-                    if self.args.model_type == "cross":
+                    if "cross" in self.args.model_type:
                         batch_x1 = batch_x1.double().to(self.device)
                         batch_x2 = batch_x2.double().to(self.device)
                         batch_y = batch_y.long().to(self.device)
@@ -288,6 +297,47 @@ class Exp(object):
             #best_model_path = cv_path+'/'+'checkpoint.pth'
             #self.model.load_state_dict(torch.load(best_model_path))
 
+    def prediction_test(self):
+        assert self.args.exp_mode == "Given"
+        model = self.build_model().to(self.device)
+        model.load_state_dict(torch.load(os.path.join(self.path,'cv_0/best_vali.pth')))
+        model.eval()
+        dataset = data_dict[self.args.data_name](self.args)
+        dataset.update_train_val_test_keys()
+        test_loader   = self._get_data(dataset, flag = 'test')
+        preds = []
+        trues = []
+        for i, (batch_x1,batch_x2,batch_y) in enumerate(test_loader):
+            if "cross" in self.args.model_type:
+                batch_x1 = batch_x1.double().to(self.device)
+                batch_x2 = batch_x2.double().to(self.device)
+                batch_y = batch_y.long().to(self.device)
+                # model prediction
+                if self.args.output_attention:
+                    outputs = self.model(batch_x1,batch_x2)[0]
+                else:
+                    outputs = self.model(batch_x1,batch_x2)
+            else:
+                batch_x1 = batch_x1.double().to(self.device)
+                batch_y = batch_y.long().to(self.device)
+
+                # model prediction
+                if self.args.output_attention:
+                    outputs = self.model(batch_x1)[0]
+                else:
+                    outputs = self.model(batch_x1)
+
+            preds.extend(list(np.argmax(outputs.detach().cpu().numpy(),axis=1)))
+            trues.extend(list(batch_y.detach().cpu().numpy())) 
+		
+        acc = accuracy_score(preds,trues)
+        f_w = f1_score(trues, preds, average='weighted')
+        f_macro = f1_score(trues, preds, average='macro')
+        f_micro = f1_score(trues, preds, average='micro')
+
+        return preds,trues
+
+
 
     def validation(self, data_loader, criterion):
         self.model.eval()
@@ -297,7 +347,7 @@ class Exp(object):
         with torch.no_grad():
             for i, (batch_x1,batch_x2,batch_y) in enumerate(data_loader):
 
-                if self.args.model_type == "cross":
+                if "cross" in self.args.model_type:
                     batch_x1 = batch_x1.double().to(self.device)
                     batch_x2 = batch_x2.double().to(self.device)
                     batch_y = batch_y.long().to(self.device)

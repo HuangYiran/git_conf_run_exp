@@ -62,7 +62,8 @@ class BASE_DATA():
         # compute/check the act_weights 
         #self.act_weights = self.update_classes_weight()
         #print("The orginal class weights are : ", self.act_weights)
-        if self.model_type in ["freq","cross","cnn_freq"]:
+        if self.model_type in ["freq","cross","cnn_freq", "cnn_lstm_freq", "cnn_lstm_cross"]:
+            print("------------freq style -----------------")
             assert self.freq_save_path is not None
             self.genarate_spectrogram()
 
@@ -276,14 +277,16 @@ class BASE_DATA():
             cparam = 2 * fc * totalscal  #常数c
             scales2 = cparam/np.arange(totalscal,0,-1) #为使转换后的频率序列是一等差序列，尺度序列必须取为这一形式（也即小波尺度）
 
-            if self.windowsize >= 60:
+            if self.windowsize >= 60 and "synthetic" not in self.data_name:
                 l_scale = 2
             else:
                 l_scale = 1
-            if self.freq >=40:
+
+            if self.freq >=40 and "synthetic" not in self.data_name:
                 f_scale = 2
             else:
                 f_scale = 1
+
             if f_scale>1 or l_scale>1:
                 resize_flag = True
             else:

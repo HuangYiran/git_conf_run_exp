@@ -42,7 +42,10 @@ data_dict = {"ucihar" : UCI_HAR_DATA,
              "hugadbv2" : HuGaDBV2_HAR_DATA,
              "utdmhadw" : UTD_MHAD_W_HAR_DATA,
              "utdmhadt" : UTD_MHAD_T_HAR_DATA,
-             "synthetic" : SYNTHETIC_HAR_DATA,
+             "synthetic_1" : SYNTHETIC_HAR_DATA,
+             "synthetic_2" : SYNTHETIC_HAR_DATA,
+             "synthetic_3" : SYNTHETIC_HAR_DATA,
+             "synthetic_4" : SYNTHETIC_HAR_DATA,
              "unimib"   : UNIMIB_HAR_DATA,
              "hhar"     : HHAR_HAR_DATA,
              "ward"     : WARD_HAR_DATA}
@@ -66,7 +69,7 @@ class data_set(Dataset):
         self.slidingwindows = dataset.slidingwindows
         #self.act_weights = dataset.act_weights
 
-        if self.args.model_type in ["freq","cross","cnn_freq"]:
+        if self.args.model_type in ["freq","cross","cnn_freq","cnn_lstm_freq", "cnn_lstm_cross"]:
             self.freq_path  = dataset.freq_path
             self.freq_file_name = dataset.freq_file_name
             if self.load_all:
@@ -115,7 +118,7 @@ class data_set(Dataset):
         start_index = self.slidingwindows[index][1]
         end_index = self.slidingwindows[index][2]
 
-        if self.args.model_type in ["time", "deepconvlstm", "sahar", "deepconvlstm_attn", "attend", "attend_new"]:
+        if self.args.model_type in ["time", "deepconvlstm", "sahar", "deepconvlstm_attn", "attend", "attend_new", "cnn_lstm_time"]:
 
 
             sample_x = self.data_x.iloc[start_index:end_index, 1:-1].values
@@ -124,7 +127,7 @@ class data_set(Dataset):
 
             return sample_x, sample_y,sample_y
 
-        elif self.args.model_type in ["freq", "cnn_freq"]:
+        elif self.args.model_type in ["freq", "cnn_freq", "cnn_lstm_freq"]:
             #sample_x = self.spec_list[index]
             if self.load_all:
                     sample_x = self.data_freq[self.freq_file_name[index]]
