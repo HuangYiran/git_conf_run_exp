@@ -120,8 +120,10 @@ class data_set(Dataset):
 
         if self.args.model_type in ["time", "deepconvlstm", "sahar", "deepconvlstm_attn", "attend", "attend_new", "cnn_lstm_time"]:
 
-
-            sample_x = self.data_x.iloc[start_index:end_index, 1:-1].values
+            if self.args.sample_wise ==True:
+                sample_x = np.array(self.data_x.iloc[start_index:end_index, 1:-1].apply(lambda x: (x - np.mean(x)) / (np.max(x) - np.min(x))))
+            else:
+                sample_x = self.data_x.iloc[start_index:end_index, 1:-1].values
 
             sample_y = self.class_transform[self.data_y.iloc[start_index:end_index].mode().loc[0]]
 
@@ -140,8 +142,11 @@ class data_set(Dataset):
 
         else:
 
-
-            sample_ts_x = self.data_x.iloc[start_index:end_index, 1:-1].values
+            if self.args.sample_wise ==True:
+                sample_ts_x = np.array(self.data_x.iloc[start_index:end_index, 1:-1].apply(lambda x: (x - np.mean(x)) / (np.max(x) - np.min(x))))
+            else:
+                sample_ts_x = self.data_x.iloc[start_index:end_index, 1:-1].values
+            #sample_ts_x = self.data_x.iloc[start_index:end_index, 1:-1].values
             #print(sample_ts_x.shape)
 
             if self.load_all:
