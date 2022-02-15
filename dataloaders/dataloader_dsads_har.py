@@ -74,7 +74,7 @@ class DSADS_HAR_DATA(BASE_DATA):
         self.test_keys    = [8]
 
 
-        self.LOCV_keys = [[1,2],[3,4],[5,6],[7,8]]
+        self.LOCV_keys = [[1],[2],[3],[4],[5],[6],[7],[8]]
         self.all_keys = [1,2,3,4,5,6,7,8]
         self.sub_ids_of_each_sub = {}
 

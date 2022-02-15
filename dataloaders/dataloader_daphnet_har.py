@@ -85,7 +85,7 @@ class Daphnet_HAR_DATA(BASE_DATA):
         else:
             self.split_tag = "sub_id"
 
-        self.LOCV_keys = [[1,2],[3,4],[4,6],[7,8],[9,10]]
+        self.LOCV_keys = [[1],[2],[3],[4],[5],[6],[7],[8],[9],[10]]
         self.all_keys = [1,2,3,4,5,6,7,8,9,10]
         self.sub_ids_of_each_sub = {}
 

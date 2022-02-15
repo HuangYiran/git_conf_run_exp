@@ -66,14 +66,22 @@ class data_set(Dataset):
         self.load_all = args.load_all
         self.data_x = dataset.normalized_data_x
         self.data_y = dataset.data_y
-        self.slidingwindows = dataset.slidingwindows
-        #self.act_weights = dataset.act_weights
+        if flag in ["train","vali"]:
+            self.slidingwindows = dataset.train_slidingwindows
+        else:
+            self.slidingwindows = dataset.test_slidingwindows
+        self.act_weights = dataset.act_weights
 
         if self.args.model_type in ["freq","cross","cnn_freq","cnn_lstm_freq", "cnn_lstm_cross"]:
-            self.freq_path  = dataset.freq_path
-            self.freq_file_name = dataset.freq_file_name
-            if self.load_all:
-                self.data_freq   = dataset.data_freq
+            if flag in  ["train","vali"]:
+                self.freq_path      = dataset.train_freq_path
+                self.freq_file_name = dataset.train_freq_file_name
+                if self.load_all :
+                    self.data_freq   = dataset.data_freq
+            else:
+                self.freq_path      = dataset.test_freq_path
+                self.freq_file_name = dataset.test_freq_file_name
+                self.load_all = False
 
         if self.flag == "train":
             # load train

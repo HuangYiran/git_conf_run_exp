@@ -53,7 +53,7 @@ class HHAR_HAR_DATA(BASE_DATA):
         self.exp_mode     = args.exp_mode
         self.split_tag = "sub"
 
-        self.LOCV_keys = [[0],[1,2],[3],[4,5],[6],[7],[8]]
+        self.LOCV_keys = [[0],[1],[2],[3],[4],[5],[6],[7],[8]]
 
         self.all_keys = [0, 1, 2, 3, 4, 5, 6, 7, 8]
 

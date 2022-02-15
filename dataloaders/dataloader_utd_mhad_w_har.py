@@ -100,7 +100,7 @@ class UTD_MHAD_W_HAR_DATA(BASE_DATA):
         self.exp_mode     = args.exp_mode
         self.split_tag = "sub"
 
-        self.LOCV_keys = [[1,2],[3,4],[4,6],[7,8]]
+        self.LOCV_keys = [[1],[2],[3],[4],[5],[6],[7],[8]]
         self.all_keys = [1,2,3,4,5,6,7,8]
         self.sub_ids_of_each_sub = {}
 
