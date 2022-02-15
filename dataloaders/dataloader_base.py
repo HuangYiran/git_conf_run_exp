@@ -282,9 +282,9 @@ class BASE_DATA():
         Each window consists of three parts: sub_ID , start_index , end_index
         The sub_ID ist used for train test split, if the subject train test split is applied
         """
-        if os.path.exists(os.path.join(self.window_save_path,"{}_{}_drop_trans_{}.pickle".format(self.data_name, flag, self.drop_transition))):
+        if os.path.exists(os.path.join(self.window_save_path,"{}_{}_drop_trans_{}_windowsize{}.pickle".format(self.data_name, flag, self.drop_transition,self.windowsize))):
             print("-----------------------Sliding file are generated -----------------------")
-            with open(os.path.join(self.window_save_path,"{}_{}_drop_trans_{}.pickle".format(self.data_name, flag, self.drop_transition)), 'rb') as handle:
+            with open(os.path.join(self.window_save_path,"{}_{}_drop_trans_{}_windowsize{}.pickle".format(self.data_name, flag, self.drop_transition,self.windowsize)), 'rb') as handle:
                 window_index = pickle.load(handle)
         else:
             print("----------------------- Get the Sliding Window -------------------")
@@ -308,22 +308,23 @@ class BASE_DATA():
             for index in data_x.act_block.unique():
 
                 temp_df = data_x[data_x["act_block"]==index]
-                assert len(temp_df["activity_id"].unique())==1
+                #assert len(temp_df["activity_id"].unique())==1
 
-                if temp_df["activity_id"].unique()[0] not in self.drop_activities:
-                    assert len(temp_df["sub_id"].unique()) == 1
-                    sub_id = temp_df["sub_id"].unique()[0]
-                    start = temp_df.index[0]
-                    end   = start+windowsize
+                #if temp_df["activity_id"].unique()[0] not in self.drop_activities:
+                assert len(temp_df["sub_id"].unique()) == 1
+                sub_id = temp_df["sub_id"].unique()[0]
+                start = temp_df.index[0]
+                end   = start+windowsize
 
-                    while end <= temp_df.index[-1] + 1 :
+                while end <= temp_df.index[-1] + 1 :
 
+                    if temp_df.loc[start:end-1,"activity_id"].mode().loc[0] not in self.drop_activities:
                         window_index.append([sub_id, start, end])
 
-                        start = start + displacement
-                        end   = start + windowsize
+                    start = start + displacement
+                    end   = start + windowsize
 
-            with open(os.path.join(self.window_save_path,"{}_{}_drop_trans_{}.pickle".format(self.data_name, flag, self.drop_transition)), 'wb') as handle:
+            with open(os.path.join(self.window_save_path,"{}_{}_drop_trans_{}_windowsize{}.pickle".format(self.data_name, flag, self.drop_transition,windowsize)), 'wb') as handle:
                 pickle.dump(window_index, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         return window_index
@@ -428,8 +429,11 @@ class BASE_DATA():
 
             start_index = self.train_slidingwindows[index][1]
             end_index = self.train_slidingwindows[index][2]
-
+            #print(index, " ", start_index, " ", end_index)
+            #print(self.data_y.iloc[start_index:end_index].mode().loc[0])
             y_of_all_windows.append(class_transform[self.data_y.iloc[start_index:end_index].mode().loc[0]])
+            #print("----------------------------------")
+        #print(y_of_all_windows)
         y_of_all_windows = np.array(y_of_all_windows)
         target_count = np.array([np.sum(y_of_all_windows == label) for label in set(y_of_all_windows)])
         weight_target = 1.0 / target_count

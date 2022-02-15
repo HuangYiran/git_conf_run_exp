@@ -19,7 +19,7 @@ from models.CNN_freq import CNN_Freq_Model
 from models.CNN_LSTM_FREQ import CNN_LSTM_FREQ_Model
 from models.CNN_LSTM_TIME import CNN_LSTM_TIME_Model
 from models.CNN_LSTM_TIME_FREQ import CNN_LSTM_CROSS_Model
-
+from torch.utils.data.sampler import WeightedRandomSampler
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import f1_score
 from utils import EarlyStopping, adjust_learning_rate_class, mixup_data, MixUpLoss
@@ -28,7 +28,6 @@ from datetime import datetime
 #import random
 #random.seed(0)
 #np.random.seed(0)
-#Data_Loader_Dict = {"ucr_univariante" : UCR_TSC_DATA_UNIVARIATE}
 
 
 class Exp(object):
@@ -104,27 +103,39 @@ class Exp(object):
         criterion = self.criterion_dict[self.args.criterion]()
         return criterion
 
-    def _get_data(self, data, flag="train"):
+    def _get_data(self, data, flag="train", weighted_sampler = False):
         if flag == 'train':
             shuffle_flag = True # ++++++++++++++++++++++++++++
         else:
             shuffle_flag = False
 
         data  = data_set(self.args,data,flag)
+        if weighted_sampler and flag == 'train':
 
-        data_loader = DataLoader(data, 
-                                 batch_size   =  self.args.batch_size,
-                                 shuffle      =  shuffle_flag,
-                                 num_workers  =  0,
-                                 drop_last    =  False)
+            sampler = WeightedRandomSampler(
+                data.act_weights, len(data.act_weights)
+            )
 
+            data_loader = DataLoader(data, 
+                                     batch_size   =  self.args.batch_size,
+                                     #shuffle      =  shuffle_flag,
+                                     num_workers  =  0,
+                                     sampler=sampler,
+                                     drop_last    =  False)
+        else:
+            data_loader = DataLoader(data, 
+                                     batch_size   =  self.args.batch_size,
+                                     shuffle      =  shuffle_flag,
+                                     num_workers  =  0,
+                                     drop_last    =  False)
         return data_loader
 
     def train(self):
         # save_path_need ++++++++++++
         dateTimeObj = datetime.now()
         setting = "Time_{}_{}_{}_{}_data{}_mode{}_model{}_win{}_depth{}".format(dateTimeObj.month, dateTimeObj.day, dateTimeObj.hour, dateTimeObj.minute,
-                                                                                self.args.data_name, self.args.exp_mode, self.args.model_type, self.args.windowsize, self.args.cross_depth)
+                                                                                self.args.data_name, self.args.exp_mode, self.args.model_type, 
+                                                                                self.args.windowsize, self.args.cross_depth)
         path = os.path.join(self.args.to_save_path,'logs/'+setting)
         self.path = path
         if not os.path.exists(path):
@@ -132,8 +143,10 @@ class Exp(object):
 
         # load the data
         dataset = data_dict[self.args.data_name](self.args)
-        file_name = "Time_{}_{}_{}_{}_data{}_mode{}_model{}_win{}_mask{}.txt".format(dateTimeObj.month, dateTimeObj.day, dateTimeObj.hour, dateTimeObj.minute,
-                                                                              self.args.data_name, self.args.exp_mode, self.args.model_type, self.args.windowsize, self.args.attention_layer_types)
+        file_name = "Time_{}_{}_{}_{}_data{}_mode{}_model{}_win{}_mask{}_drop{}_depth{}_dmodel{}.txt".format(dateTimeObj.month, dateTimeObj.day, dateTimeObj.hour, dateTimeObj.minute,
+                                                                              self.args.data_name, self.args.exp_mode, self.args.model_type, 
+                                                                              self.args.windowsize, self.args.attention_layer_types, 
+                                                                              self.args.drop_transition, self.args.cross_depth, self.args.token_d_model)
 
 
         if self.args.to_save_path is not None:
@@ -189,9 +202,9 @@ class Exp(object):
                     continue
             #print("After update the train test split , the class weight :" , dataset.act_weights)
             # get the loader of train val test
-            train_loader = self._get_data(dataset, flag = 'train')
-            val_loader = self._get_data(dataset, flag = 'vali')
-            test_loader   = self._get_data(dataset, flag = 'test')
+            train_loader = self._get_data(dataset, flag = 'train', weighted_sampler = self.args.weighted_sampler )
+            val_loader = self._get_data(dataset, flag = 'vali', weighted_sampler = self.args.weighted_sampler)
+            test_loader   = self._get_data(dataset, flag = 'test', weighted_sampler = self.args.weighted_sampler)
             #class_weights=torch.tensor(dataset.act_weights,dtype=torch.double).to(self.device)
             train_steps = len(train_loader)
 
@@ -199,11 +212,11 @@ class Exp(object):
             learning_rate_adapter = adjust_learning_rate_class(self.args,True)
 
             model_optim = self._select_optimizer()
-            if self.args.weighted == True:
-                criterion =  nn.CrossEntropyLoss(reduction="mean",weight=class_weights).to(self.device)#self._select_criterion()
-            else:
-                criterion =  nn.CrossEntropyLoss(reduction="mean").to(self.device)#self._select_criterion()
-
+            #if self.args.weighted == True:
+            #    criterion =  nn.CrossEntropyLoss(reduction="mean",weight=class_weights).to(self.device)#self._select_criterion()
+            #else:
+            #    criterion =  nn.CrossEntropyLoss(reduction="mean").to(self.device)#self._select_criterion()
+            criterion =  nn.CrossEntropyLoss(reduction="mean").to(self.device)
             val_loss_min = np.Inf
             filnal_test_f_w = 0
             filnal_test_f_m = 0
@@ -263,24 +276,24 @@ class Exp(object):
                 train_loss = np.average(train_loss)
                 #train_acc_1 = accuracy_score(preds,trues)
                 vali_loss , vali_acc, vali_f_w,  vali_f_macro,  vali_f_micro = self.validation(val_loader, criterion)
-                test_loss , test_acc, test_f_w,  test_f_macro,  test_f_micro = self.validation(test_loader, criterion)
+                #test_loss , test_acc, test_f_w,  test_f_macro,  test_f_micro = self.validation(test_loader, criterion)
                 #_         , train_acc,       _,         _ = self.validation(train_loader, criterion)
 
                 #print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Train Accuracy {3:.7f} Vali Loss: {4:.7f} Vali Accuracy: {5:.7f}  Vali weighted F1: {6:.7f}  Vali macro F1 {7:.7f}".format(
                 #    epoch + 1, train_steps, train_loss, train_acc, vali_loss, vali_acc, vali_f_w, vali_f_m))
                 print("VALI: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Vali Loss: {3:.7f} Vali Accuracy: {4:.7f}  Vali weighted F1: {5:.7f}  Vali macro F1 {6:.7f} ".format(
                     epoch + 1, train_steps, train_loss, vali_loss, vali_acc, vali_f_w, vali_f_macro))
-                print("TEST: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Test Loss: {3:.7f} Test Accuracy: {4:.7f}  Test weighted F1: {5:.7f}  Test macro F1 {6:.7f} ".format(
-                    epoch + 1, train_steps, train_loss, test_loss, test_acc, test_f_w, test_f_macro))
+                #print("TEST: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Test Loss: {3:.7f} Test Accuracy: {4:.7f}  Test weighted F1: {5:.7f}  Test macro F1 {6:.7f} ".format(
+                #    epoch + 1, train_steps, train_loss, test_loss, test_acc, test_f_w, test_f_macro))
                 log.write("VALI: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Vali Loss: {3:.7f} Vali Accuracy: {4:.7f}  Vali weighted F1: {5:.7f}  Vali macro F1 {6:.7f} \n".format(
                     epoch + 1, train_steps, train_loss, vali_loss, vali_acc, vali_f_w, vali_f_macro))
-                log.write("TEST: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Test Loss: {3:.7f} Test Accuracy: {4:.7f}  Test weighted F1: {5:.7f}  Test macro F1 {6:.7f} \n".format(
-                    epoch + 1, train_steps, train_loss, test_loss, test_acc, test_f_w, test_f_macro))
+                #log.write("TEST: Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}  Test Loss: {3:.7f} Test Accuracy: {4:.7f}  Test weighted F1: {5:.7f}  Test macro F1 {6:.7f} \n".format(
+                #    epoch + 1, train_steps, train_loss, test_loss, test_acc, test_f_w, test_f_macro))
 
-                if vali_loss<=val_loss_min:
-                    val_loss_min = vali_loss
-                    filnal_test_f_m = test_f_macro
-                    filnal_test_f_w = test_f_w
+                #if vali_loss<=val_loss_min:
+                #    val_loss_min = vali_loss
+                #    filnal_test_f_m = test_f_macro
+                #    filnal_test_f_w = test_f_w
 
                 early_stopping(vali_loss, self.model, cv_path, vali_f_macro, vali_f_w, log)
                 if early_stopping.early_stop:
@@ -289,9 +302,20 @@ class Exp(object):
                 log.write("----------------------------------------------------------------------------------------\n")
                 log.flush()
                 learning_rate_adapter(model_optim,vali_loss)
-            log_1.write("Test weighted F1: {0:.7f}  Test macro F1 {1:.7f}\n".format(filnal_test_f_w, filnal_test_f_m))
+
+            #self.model  = self.build_model().to(self.device)
+			
+            print("Loading the best validation model!")
+            self.model.load_state_dict(torch.load(cv_path+'/'+'best_vali.pth'))
+            #model.eval()
+            test_loss , test_acc, test_f_w,  test_f_macro,  test_f_micro = self.validation(test_loader, criterion)
+            print("Final Test Performance : Test Accuracy: {0:.7f}  Test weighted F1: {1:.7f}  Test macro F1 {2:.7f} ".format (test_acc, test_f_w, test_f_macro))
+            log.write("Final Test Performance : Test weighted F1: {0:.7f}  Test macro F1 {1:.7f}\n\n\n\n\n\n\n\n".format(test_f_w, test_f_macro))
+            log.flush()
+
+            log_1.write("Test weighted F1: {0:.7f}  Test macro F1 {1:.7f}\n".format(test_f_w, test_f_macro))
             log_1.flush()
-            torch.save(self.model.state_dict(), os.path.join(cv_path,'last.pth'))
+            #torch.save(self.model.state_dict(), os.path.join(cv_path,'last.pth'))
             log.close()
             log_1.close()
             #best_model_path = cv_path+'/'+'checkpoint.pth'
